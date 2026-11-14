@@ -925,8 +925,11 @@ macro_rules! define_field {
                 fn accessibility_label(&self) -> Option<Retained<NSString>> {
                     match self.combobox() {
                         Some(field) => field.label.map(|l| NSString::from_str(&l)),
-                        // SAFETY: NSTextField's own label.
-                        None => unsafe { msg_send![super(self), accessibilityLabel] },
+                        None => match self.input_label() {
+                            Some(label) => Some(NSString::from_str(&label)),
+                            // SAFETY: NSTextField's own label.
+                            None => unsafe { msg_send![super(self), accessibilityLabel] },
+                        },
                     }
                 }
 
@@ -1060,12 +1063,27 @@ macro_rules! define_field {
 trait FieldOf {
     /// The input view's combo box, when the field is one.
     fn combobox(&self) -> Option<crate::access::ComboboxField>;
+    /// The input view's accessibility label: the field is the element
+    /// VoiceOver and other tools reach, not the input view around it.
+    fn input_label(&self) -> Option<String>;
 }
 
 impl<T: objc2::DefinedClass<Ivars = OnceCell<Ctx>>> FieldOf for T {
     fn combobox(&self) -> Option<crate::access::ComboboxField> {
         let (_, view, _) = self.ivars().get()?.get()?;
         crate::access::combobox_field(&view)
+    }
+
+    fn input_label(&self) -> Option<String> {
+        let (_, view, _) = self.ivars().get()?.get()?;
+        let label = view
+            .try_state()?
+            .props
+            .accessibility
+            .label
+            .as_deref()?
+            .to_owned();
+        Some(label)
     }
 }
 
@@ -1197,6 +1215,16 @@ define_text_view!(
     unsafe impl NSObjectProtocol for TextArea {}
 
     impl TextArea {
+        /// The input view's label, as a single-line field takes it.
+        #[unsafe(method_id(accessibilityLabel))]
+        fn accessibility_label(&self) -> Option<Retained<NSString>> {
+            match self.input_label() {
+                Some(label) => Some(NSString::from_str(&label)),
+                // SAFETY: NSTextView's own label.
+                None => unsafe { msg_send![super(self), accessibilityLabel] },
+            }
+        }
+
         /// A click in an inactive window edits at once, as everywhere in
         /// the surface (the root accepts first clicks too).
         #[unsafe(method(acceptsFirstMouse:))]

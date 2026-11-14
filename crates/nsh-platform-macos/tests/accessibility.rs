@@ -31,8 +31,8 @@ mod macos {
             sel,
         },
         objc2_app_kit::{
-            NSAccessibility, NSApplication, NSBackingStoreType, NSTextField, NSView, NSWindow,
-            NSWindowStyleMask,
+            NSAccessibility, NSApplication, NSBackingStoreType, NSTextField, NSTextView, NSView,
+            NSWindow, NSWindowStyleMask,
         },
         objc2_foundation::{
             NSDate, NSNumber, NSPoint, NSRange, NSRect, NSRunLoop, NSSize, NSString,
@@ -380,6 +380,13 @@ mod macos {
         view()
             .child(field("plain-field"))
             .child(field("secure-field").masked(true))
+            .child(field("labelled-field").label("Network name"))
+            .child(
+                field("labelled-area")
+                    .multiline(true)
+                    .h(px(60.0))
+                    .label("Notes"),
+            )
             .child(
                 field("closed-combo")
                     .role(AccessibilityRole::Combobox)
@@ -423,6 +430,13 @@ mod macos {
                     .find_map(|child| native_field(&child))
             })
         }
+        fn native_text_view(view: &NSView) -> Option<Retained<NSTextView>> {
+            view.retain().downcast::<NSTextView>().ok().or_else(|| {
+                view.subviews()
+                    .iter()
+                    .find_map(|child| native_text_view(&child))
+            })
+        }
         app.load(Root::of::<InputRoles>().into());
         until("input roles mount", || find(root, "choice").is_some());
         for (id, role) in [
@@ -463,6 +477,21 @@ mod macos {
                 }
             }
         }
+        // A labelled input's editor is the element, and takes the label:
+        // the input view around it is none.
+        let input = view_with_id(root, "labelled-field").unwrap();
+        let field = native_field(&input).expect("the input's native text field");
+        assert_eq!(
+            field.accessibilityLabel().unwrap().to_string(),
+            "Network name"
+        );
+        assert!(!input.isAccessibilityElement());
+        let plain = native_field(&view_with_id(root, "plain-field").unwrap()).unwrap();
+        assert!(plain.accessibilityLabel().is_none_or(|l| l.is_empty()));
+        let area = view_with_id(root, "labelled-area").unwrap();
+        let editor = native_text_view(&area).expect("the input's native text view");
+        assert_eq!(editor.accessibilityLabel().unwrap().to_string(), "Notes");
+        assert!(!area.isAccessibilityElement());
         println!("input accessibility: text fields and editable combobox relations ok");
     }
 

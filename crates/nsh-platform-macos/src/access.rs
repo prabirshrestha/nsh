@@ -1266,6 +1266,10 @@ fn base_role(a: &Accessibility, kind: ViewKind, pressable: bool) -> Ax {
         Role::None => match kind {
             ViewKind::Text => Ax::Text,
             ViewKind::Image if a.label.is_some() => Ax::Image,
+            // An input's editor is the text field, and takes its label
+            // (`text_input`'s `accessibilityLabel`), as WebKit's labelled
+            // input is one element.
+            ViewKind::Input => Ax::Generic,
             _ if a.accessible == Some(false) => Ax::Generic,
             _ if pressable => Ax::Button,
             ViewKind::Scroll => Ax::ScrollArea,
